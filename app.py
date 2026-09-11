@@ -41,9 +41,11 @@ def logout():
 # ==========================================
 @st.cache_data
 def cargar_y_procesar_datos():
-    # Usamos index_col=0 en lugar de 'Marca' para leer siempre la primera columna sin importar espacios en blanco
+    # Volcado_Dist tiene sus títulos en la Fila 1 (por defecto)
     df_dist = pd.read_excel('datos.xlsx', sheet_name='Volcado_Dist', index_col=0)
-    df_promedios = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', index_col=0)
+    
+    # ¡CORRECCIÓN!: Agregamos header=1 porque los títulos en esta hoja están en la Fila 2
+    df_promedios = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', header=1, index_col=0)
     
     # Limpiar espacios extra al principio o final de los nombres de las marcas
     df_dist.index = df_dist.index.astype(str).str.strip()
@@ -58,13 +60,14 @@ def cargar_y_procesar_datos():
     totales_dist = df_dist.sum()
     df_dist_pct = df_dist.div(totales_dist)
     
-    # Extraer la columna PROMEDIO TOTAL directamente de la primera hoja
+    # Extraer la columna PROMEDIO TOTAL
     col_promedio = next((col for col in df_promedios.columns if str(col).strip().upper() == 'PROMEDIO TOTAL'), None)
     
     if col_promedio:
-        promedio_total_serie = df_promedios[col_promedio].fillna(0)
+        # Convertimos forzosamente a números por si Excel envía los datos como texto (ej: "0,00%")
+        promedio_total_serie = pd.to_numeric(df_promedios[col_promedio], errors='coerce').fillna(0)
     else:
-        # Fallback de seguridad por si no la encuentra
+        # Fallback de seguridad
         promedio_total_serie = pd.Series(0, index=df_dist_pct.index)
         st.warning("No se encontró la columna 'PROMEDIO TOTAL' en la hoja 'Distribuidores por Marca en $'.")
     
@@ -76,7 +79,6 @@ def cargar_y_procesar_datos():
     df_final = df_final.fillna(0)
     
     return df_final
-
 # ==========================================
 # 3. LÓGICA DE VISUALIZACIÓN Y COLORES
 # ==========================================
