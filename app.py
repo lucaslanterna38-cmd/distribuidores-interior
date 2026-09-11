@@ -45,6 +45,10 @@ def cargar_y_procesar_datos():
     df_dist = pd.read_excel('datos.xlsx', sheet_name='Volcado_Dist', index_col='Marca')
     df_vend = pd.read_excel('datos.xlsx', sheet_name='Volcado_Vend', index_col='Marca')
     
+    # NUEVO: Limpiar espacios extra al principio o final de los nombres de las marcas
+    df_dist.index = df_dist.index.str.strip()
+    df_vend.index = df_vend.index.str.strip()
+    
     # Limpiar columna Año si existe
     if 'Año' in df_dist.columns: df_dist = df_dist.drop(columns=['Año'])
     if 'Año' in df_vend.columns: df_vend = df_vend.drop(columns=['Año'])
@@ -64,9 +68,13 @@ def cargar_y_procesar_datos():
     ventas_por_marca_mvd = df_vend.sum(axis=1)
     pct_mvd = ventas_por_marca_mvd / ventas_totales_mvd if ventas_totales_mvd > 0 else 0
     
-    # Calcular Promedio Total
+    # NUEVO: Calcular Promedio Total forzando ceros en vez de nulos (None)
     df_final = df_dist_pct.copy()
-    df_final['Promedio Total'] = (promedio_dist + pct_mvd) / 2
+    # Usamos .add con fill_value=0 para alinear correctamente los índices
+    df_final['Promedio Total'] = promedio_dist.add(pct_mvd, fill_value=0) / 2
+    
+    # Rellenar cualquier otro posible nulo residual con 0
+    df_final = df_final.fillna(0)
     
     return df_final
 
