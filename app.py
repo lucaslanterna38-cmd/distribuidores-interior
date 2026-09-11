@@ -37,41 +37,41 @@ def logout():
     st.rerun()
 
 # ==========================================
-# 2. PROCESAMIENTO DE DATOS (Se hace al vuelo)
+# 2. PROCESAMIENTO DE DATOS
 # ==========================================
 @st.cache_data
 def cargar_y_procesar_datos():
-    # Leer el Excel
+    # Leer el Excel (Ahora leemos Volcado_Dist y la hoja principal)
     df_dist = pd.read_excel('datos.xlsx', sheet_name='Volcado_Dist', index_col='Marca')
-    df_vend = pd.read_excel('datos.xlsx', sheet_name='Volcado_Vend', index_col='Marca')
+    df_promedios = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', index_col='Marca')
     
-    # NUEVO: Limpiar espacios extra al principio o final de los nombres de las marcas
-    df_dist.index = df_dist.index.str.strip()
-    df_vend.index = df_vend.index.str.strip()
+    # Limpiar espacios extra al principio o final de los nombres de las marcas
+    df_dist.index = df_dist.index.astype(str).str.strip()
+    df_promedios.index = df_promedios.index.astype(str).str.strip()
     
     # Limpiar columna Año si existe
     if 'Año' in df_dist.columns: df_dist = df_dist.drop(columns=['Año'])
-    if 'Año' in df_vend.columns: df_vend = df_vend.drop(columns=['Año'])
     
     df_dist = df_dist.fillna(0)
-    df_vend = df_vend.fillna(0)
     
     # Calcular porcentajes de cada distribuidor sobre su venta total
     totales_dist = df_dist.sum()
     df_dist_pct = df_dist.div(totales_dist)
     
-    # Calcular Promedio Distribuidores
-    promedio_dist = df_dist_pct.mean(axis=1)
+    # Extraer la columna PROMEDIO TOTAL directamente de la primera hoja
+    # Buscamos la columna, ignorando diferencias de mayúsculas/minúsculas o espacios
+    col_promedio = next((col for col in df_promedios.columns if str(col).strip().upper() == 'PROMEDIO TOTAL'), None)
     
-    # Calcular Porcentaje Vendedores MVD Trad
-    ventas_totales_mvd = df_vend.sum().sum()
-    ventas_por_marca_mvd = df_vend.sum(axis=1)
-    pct_mvd = ventas_por_marca_mvd / ventas_totales_mvd if ventas_totales_mvd > 0 else 0
+    if col_promedio:
+        promedio_total_serie = df_promedios[col_promedio].fillna(0)
+    else:
+        # Fallback de seguridad por si no la encuentra
+        promedio_total_serie = pd.Series(0, index=df_dist_pct.index)
+        st.warning("No se encontró la columna 'PROMEDIO TOTAL' en la hoja 'Distribuidores por Marca en $'.")
     
-    # NUEVO: Calcular Promedio Total forzando ceros en vez de nulos (None)
+    # Combinar el DataFrame de porcentajes con la columna Promedio Total
     df_final = df_dist_pct.copy()
-    # Usamos .add con fill_value=0 para alinear correctamente los índices
-    df_final['Promedio Total'] = promedio_dist.add(pct_mvd, fill_value=0) / 2
+    df_final = df_final.join(promedio_total_serie.rename('Promedio Total'), how='left')
     
     # Rellenar cualquier otro posible nulo residual con 0
     df_final = df_final.fillna(0)
@@ -89,7 +89,10 @@ def aplicar_color_gerencia(row):
     for i, col in enumerate(row.index):
         if col != 'Promedio Total':
             val = row[col]
-            if val >= promedio:
+            # Si ambos son 0 (o tan bajos que se redondean a 0%), se pinta rojo
+            if val <= 1e-6 and promedio <= 1e-6:
+                estilos[i] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+            elif val >= promedio:
                 estilos[i] = 'background-color: #d4edda; color: #155724;' # Verde
             else:
                 estilos[i] = 'background-color: #f8d7da; color: #721c24;' # Rojo
@@ -101,10 +104,14 @@ def aplicar_color_individual(row):
     val = row.iloc[0] # El porcentaje del distribuidor
     promedio = row['Promedio Total']
     
-    if val >= promedio:
-        estilos[0] = 'background-color: #d4edda; color: #155724;'
+    # Si ambos son 0 (o tan bajos que se redondean a 0%), se pinta rojo
+    if val <= 1e-6 and promedio <= 1e-6:
+        estilos[0] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+    elif val >= promedio:
+        estilos[0] = 'background-color: #d4edda; color: #155724;' # Verde
     else:
-        estilos[0] = 'background-color: #f8d7da; color: #721c24;'
+        estilos[0] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+        
     return estilos
 
 # ==========================================
