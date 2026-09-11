@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 
-# Configurar la página en modo ancho (Obligatorio que sea la primera instrucción de Streamlit)
+# Configurar la página en modo ancho
 st.set_page_config(layout="wide")
 
 # ==========================================
 # 1. SISTEMA DE AUTENTICACIÓN SEGURO
 # ==========================================
-# Llama a las contraseñas guardadas en los Advanced Settings de Streamlit
 try:
     USUARIOS = st.secrets["credenciales"]
 except FileNotFoundError:
@@ -37,61 +36,66 @@ def logout():
     st.rerun()
 
 # ==========================================
-# 2. PROCESAMIENTO DE DATOS
+# 2. PROCESAMIENTO DE DATOS (BÚSQUEDA ROBUSTA)
 # ==========================================
 @st.cache_data
 def cargar_y_procesar_datos():
-    # Volcado_Dist tiene sus títulos en la Fila 1 (por defecto)
+    # 1. Leer Volcado_Dist
     df_dist = pd.read_excel('datos.xlsx', sheet_name='Volcado_Dist', index_col=0)
-    
-    # Agregamos header=1 porque los títulos en esta hoja están en la Fila 2
-    df_promedios = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', header=1, index_col=0)
-    
-    # Limpiar espacios extra al principio o final de los nombres de las marcas
-    df_dist.index = df_dist.index.astype(str).str.strip()
-    df_promedios.index = df_promedios.index.astype(str).str.strip()
-    
-    # Limpiar columna Año si existe
-    if 'Año' in df_dist.columns: df_dist = df_dist.drop(columns=['Año'])
-    
+    if 'Año' in df_dist.columns: 
+        df_dist = df_dist.drop(columns=['Año'])
     df_dist = df_dist.fillna(0)
     
-    # Calcular porcentajes de cada distribuidor sobre su venta total
     totales_dist = df_dist.sum()
     df_dist_pct = df_dist.div(totales_dist)
     
-    # Extraer la columna PROMEDIO TOTAL
-    col_promedio = next((col for col in df_promedios.columns if str(col).strip().upper() == 'PROMEDIO TOTAL'), None)
+    # 2. Leer promedios como cuadrícula cruda (sin importar dónde estén los encabezados)
+    df_raw = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', header=None)
     
-    if col_promedio:
-        # CORRECCIÓN DEFINITIVA: Función para traducir formatos de texto ("1,29%", "0,01") a número real
-        def limpiar_porcentaje(val):
-            if pd.isna(val): return 0.0
-            if isinstance(val, str):
-                texto = val.strip()
-                es_porcentaje = '%' in texto
-                # Cambiamos comas por puntos y quitamos el %
-                texto = texto.replace('%', '').replace(',', '.')
-                try:
-                    num = float(texto)
-                    # Si tenía el símbolo %, lo dividimos entre 100 para que sea un decimal matemático válido
-                    return num / 100.0 if es_porcentaje else num
-                except ValueError:
-                    return 0.0
-            return float(val)
+    def limpiar_porcentaje(val):
+        if pd.isna(val): return 0.0
+        if isinstance(val, (int, float)): return float(val)
+        texto = str(val).strip()
+        es_porcentaje = '%' in texto
+        texto = texto.replace('%', '').replace(',', '.').strip()
+        try:
+            num = float(texto)
+            return num / 100.0 if es_porcentaje else num
+        except ValueError:
+            return 0.0
 
-        promedio_total_serie = df_promedios[col_promedio].apply(limpiar_porcentaje)
+    # Escanear las primeras 10 filas buscando la coordenada exacta de "PROMEDIO TOTAL"
+    col_idx = None
+    row_idx = None
+    for r in range(min(10, len(df_raw))):
+        for c in range(len(df_raw.columns)):
+            if str(df_raw.iloc[r, c]).strip().upper() == 'PROMEDIO TOTAL':
+                col_idx = c
+                row_idx = r
+                break
+        if col_idx is not None:
+            break
+            
+    promedio_dict = {}
+    if col_idx is not None:
+        # Extraer marcas (col 0) y valores (col_idx) mapeados en un diccionario
+        for r in range(row_idx + 1, len(df_raw)):
+            marca = str(df_raw.iloc[r, 0]).strip().upper()
+            if marca and marca != 'NAN':
+                val = df_raw.iloc[r, col_idx]
+                promedio_dict[marca] = limpiar_porcentaje(val)
     else:
-        # Fallback de seguridad
-        promedio_total_serie = pd.Series(0, index=df_dist_pct.index)
-        st.warning("No se encontró la columna 'PROMEDIO TOTAL' en la hoja 'Distribuidores por Marca en $'.")
-    
-    # Combinar el DataFrame de porcentajes con la columna Promedio Total
+        st.warning("No se encontró la columna 'PROMEDIO TOTAL' en la hoja.")
+        
+    # 3. Asignar los valores alineando forzosamente los nombres de las marcas en mayúsculas
     df_final = df_dist_pct.copy()
-    df_final = df_final.join(promedio_total_serie.rename('Promedio Total'), how='left')
+    promedios_alineados = []
     
-    # Rellenar cualquier otro posible nulo residual con 0
-    df_final = df_final.fillna(0)
+    for marca_original in df_final.index:
+        marca_limpia = str(marca_original).strip().upper()
+        promedios_alineados.append(promedio_dict.get(marca_limpia, 0.0))
+        
+    df_final['Promedio Total'] = promedios_alineados
     
     return df_final
 
@@ -106,11 +110,11 @@ def aplicar_color_gerencia(row):
         if col != 'Promedio Total':
             val = row[col]
             if val <= 1e-6 and promedio <= 1e-6:
-                estilos[i] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+                estilos[i] = 'background-color: #f8d7da; color: #721c24;'
             elif val >= promedio:
-                estilos[i] = 'background-color: #d4edda; color: #155724;' # Verde
+                estilos[i] = 'background-color: #d4edda; color: #155724;'
             else:
-                estilos[i] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+                estilos[i] = 'background-color: #f8d7da; color: #721c24;'
     return estilos
 
 def aplicar_color_individual(row):
