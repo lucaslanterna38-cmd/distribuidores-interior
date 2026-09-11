@@ -77,12 +77,17 @@ def cargar_y_procesar_datos():
             if 'MARCA' in val:
                 col_marca_idx = c
                 
-    # Identificar qué distribuidores realmente interesan según la hoja principal
+    # Extraer solo los distribuidores que existen en los títulos, de forma segura
     distribuidores_validos = []
     if row_idx is not None:
-        encabezados = df_raw.iloc[row_idx].astype(str).str.strip().tolist()
-        distribuidores_validos = [h for h in encabezados if h.split(';')[0].isdigit() and len(h.split(';')[0]) == 6]
-                
+        encabezados = df_raw.iloc[row_idx].tolist()
+        for h in encabezados:
+            h_str = str(h).strip() # Forzamos a que sea texto siempre
+            if ';' in h_str:
+                codigo = h_str.split(';')[0]
+                if codigo.isdigit() and len(codigo) == 6:
+                    distribuidores_validos.append(h_str)
+                    
     promedio_dict = {}
     if col_promedio_idx is not None and col_marca_idx is not None:
         for r in range(row_idx + 1, len(df_raw)):
@@ -93,7 +98,7 @@ def cargar_y_procesar_datos():
     else:
         st.warning("No se encontró la columna 'PROMEDIO TOTAL' o 'MARCA' en la hoja principal.")
         
-    # 3. Filtrar columnas basura y asignar los promedios
+    # 3. Filtrar columnas y asignar los promedios
     columnas_a_mantener = [c for c in df_dist_pct.columns if c in distribuidores_validos]
     df_final = df_dist_pct[columnas_a_mantener].copy()
     
