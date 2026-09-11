@@ -44,7 +44,7 @@ def cargar_y_procesar_datos():
     # Volcado_Dist tiene sus títulos en la Fila 1 (por defecto)
     df_dist = pd.read_excel('datos.xlsx', sheet_name='Volcado_Dist', index_col=0)
     
-    # ¡CORRECCIÓN!: Agregamos header=1 porque los títulos en esta hoja están en la Fila 2
+    # Agregamos header=1 porque los títulos en esta hoja están en la Fila 2
     df_promedios = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', header=1, index_col=0)
     
     # Limpiar espacios extra al principio o final de los nombres de las marcas
@@ -64,8 +64,23 @@ def cargar_y_procesar_datos():
     col_promedio = next((col for col in df_promedios.columns if str(col).strip().upper() == 'PROMEDIO TOTAL'), None)
     
     if col_promedio:
-        # Convertimos forzosamente a números por si Excel envía los datos como texto (ej: "0,00%")
-        promedio_total_serie = pd.to_numeric(df_promedios[col_promedio], errors='coerce').fillna(0)
+        # CORRECCIÓN DEFINITIVA: Función para traducir formatos de texto ("1,29%", "0,01") a número real
+        def limpiar_porcentaje(val):
+            if pd.isna(val): return 0.0
+            if isinstance(val, str):
+                texto = val.strip()
+                es_porcentaje = '%' in texto
+                # Cambiamos comas por puntos y quitamos el %
+                texto = texto.replace('%', '').replace(',', '.')
+                try:
+                    num = float(texto)
+                    # Si tenía el símbolo %, lo dividimos entre 100 para que sea un decimal matemático válido
+                    return num / 100.0 if es_porcentaje else num
+                except ValueError:
+                    return 0.0
+            return float(val)
+
+        promedio_total_serie = df_promedios[col_promedio].apply(limpiar_porcentaje)
     else:
         # Fallback de seguridad
         promedio_total_serie = pd.Series(0, index=df_dist_pct.index)
@@ -79,18 +94,17 @@ def cargar_y_procesar_datos():
     df_final = df_final.fillna(0)
     
     return df_final
+
 # ==========================================
 # 3. LÓGICA DE VISUALIZACIÓN Y COLORES
 # ==========================================
 def aplicar_color_gerencia(row):
-    # Pinta la celda evaluando cada distribuidor contra el Promedio Total de esa fila
     estilos = [''] * len(row)
     promedio = row['Promedio Total']
     
     for i, col in enumerate(row.index):
         if col != 'Promedio Total':
             val = row[col]
-            # Si ambos son 0 (o tan bajos que se redondean a 0%), se pinta rojo
             if val <= 1e-6 and promedio <= 1e-6:
                 estilos[i] = 'background-color: #f8d7da; color: #721c24;' # Rojo
             elif val >= promedio:
@@ -100,18 +114,16 @@ def aplicar_color_gerencia(row):
     return estilos
 
 def aplicar_color_individual(row):
-    # Pinta solo la columna del distribuidor
     estilos = [''] * len(row)
-    val = row.iloc[0] # El porcentaje del distribuidor
+    val = row.iloc[0]
     promedio = row['Promedio Total']
     
-    # Si ambos son 0 (o tan bajos que se redondean a 0%), se pinta rojo
     if val <= 1e-6 and promedio <= 1e-6:
-        estilos[0] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+        estilos[0] = 'background-color: #f8d7da; color: #721c24;'
     elif val >= promedio:
-        estilos[0] = 'background-color: #d4edda; color: #155724;' # Verde
+        estilos[0] = 'background-color: #d4edda; color: #155724;'
     else:
-        estilos[0] = 'background-color: #f8d7da; color: #721c24;' # Rojo
+        estilos[0] = 'background-color: #f8d7da; color: #721c24;'
         
     return estilos
 
@@ -124,31 +136,26 @@ else:
     st.sidebar.button("Cerrar Sesión", on_click=logout)
     df = cargar_y_procesar_datos()
     
-    # Configuración de formato a %
     formato_dict = {col: "{:.2%}" for col in df.columns}
     
     if st.session_state['rol'] == 'gerencia':
         st.title("Vista Gerencial - Todos los Distribuidores")
         st.write("Visualización de equilibrio de portafolio por marcas.")
         
-        # Aplicar estilos y formato
         df_estilizado = df.style.apply(aplicar_color_gerencia, axis=1).format(formato_dict)
         st.dataframe(df_estilizado, height=800, use_container_width=True)
         
     elif st.session_state['rol'] == 'distribuidor':
         usuario_codigo = st.session_state['usuario_actual']
         
-        # Lógica para encontrar el nombre completo de la columna usando los 6 dígitos
         dist_nombre = next((col for col in df.columns if str(col).startswith(usuario_codigo)), None)
         
         if dist_nombre:
             st.title(f"Tablero de Desempeño: {dist_nombre}")
             st.write("Compara tu venta de cada marca contra el Promedio Total esperado.")
             
-            # Filtrar solo la columna del distribuidor encontrado y el promedio
             df_individual = df[[dist_nombre, 'Promedio Total']]
             
-            # Aplicar estilos y formato
             formato_ind = {dist_nombre: "{:.2%}", 'Promedio Total': "{:.2%}"}
             df_ind_estilizado = df_individual.style.apply(aplicar_color_individual, axis=1).format(formato_ind)
             
