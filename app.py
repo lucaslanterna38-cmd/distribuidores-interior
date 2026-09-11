@@ -1,17 +1,18 @@
 import streamlit as st
 import pandas as pd
 
+# Configurar la página en modo ancho (Obligatorio que sea la primera instrucción de Streamlit)
+st.set_page_config(layout="wide")
+
 # ==========================================
-# 1. SISTEMA DE AUTENTICACIÓN SIMPLE
+# 1. SISTEMA DE AUTENTICACIÓN SEGURO
 # ==========================================
-# Diccionario con usuarios y contraseñas. 
-# La clave (usuario) debe coincidir con el nombre exacto de la columna en Excel o un código.
-USUARIOS = {
-    "admin": {"pass": "gerencia2026", "rol": "gerencia"},
-    "033422;COMBINADOS SRL": {"pass": "1234", "rol": "distribuidor"},
-    "033613;CORREA GULARTE KATIA": {"pass": "1234", "rol": "distribuidor"}
-    # Agrega el resto de tus distribuidores aquí
-}
+# Llama a las contraseñas guardadas en los Advanced Settings de Streamlit
+try:
+    USUARIOS = st.secrets["credenciales"]
+except FileNotFoundError:
+    st.error("Error: No se encontraron las credenciales seguras. Configura los 'Secrets' en Streamlit.")
+    st.stop()
 
 if 'usuario_actual' not in st.session_state:
     st.session_state['usuario_actual'] = None
@@ -19,7 +20,7 @@ if 'usuario_actual' not in st.session_state:
 
 def login():
     st.title("Acceso al Tablero Comercial")
-    usuario = st.text_input("Usuario (Código de Distribuidor)")
+    usuario = st.text_input("Usuario (Código de 6 dígitos)")
     password = st.text_input("Contraseña", type="password")
     
     if st.button("Ingresar"):
@@ -116,18 +117,25 @@ else:
         
         # Aplicar estilos y formato
         df_estilizado = df.style.apply(aplicar_color_gerencia, axis=1).format(formato_dict)
-        st.dataframe(df_estilizado, height=800)
+        st.dataframe(df_estilizado, height=800, use_container_width=True)
         
     elif st.session_state['rol'] == 'distribuidor':
-        dist_nombre = st.session_state['usuario_actual']
-        st.title(f"Tablero de Desempeño: {dist_nombre}")
-        st.write("Compara tu venta de cada marca contra el Promedio Total esperado.")
+        usuario_codigo = st.session_state['usuario_actual']
         
-        # Filtrar solo la columna del distribuidor y el promedio
-        df_individual = df[[dist_nombre, 'Promedio Total']]
+        # Lógica para encontrar el nombre completo de la columna usando los 6 dígitos
+        dist_nombre = next((col for col in df.columns if str(col).startswith(usuario_codigo)), None)
         
-        # Aplicar estilos y formato
-        formato_ind = {dist_nombre: "{:.2%}", 'Promedio Total': "{:.2%}"}
-        df_ind_estilizado = df_individual.style.apply(aplicar_color_individual, axis=1).format(formato_ind)
-        
-        st.dataframe(df_ind_estilizado, height=800, use_container_width=True)
+        if dist_nombre:
+            st.title(f"Tablero de Desempeño: {dist_nombre}")
+            st.write("Compara tu venta de cada marca contra el Promedio Total esperado.")
+            
+            # Filtrar solo la columna del distribuidor encontrado y el promedio
+            df_individual = df[[dist_nombre, 'Promedio Total']]
+            
+            # Aplicar estilos y formato
+            formato_ind = {dist_nombre: "{:.2%}", 'Promedio Total': "{:.2%}"}
+            df_ind_estilizado = df_individual.style.apply(aplicar_color_individual, axis=1).format(formato_ind)
+            
+            st.dataframe(df_ind_estilizado, height=800, use_container_width=True)
+        else:
+            st.error("No se encontraron datos para este código de distribuidor en el archivo.")
