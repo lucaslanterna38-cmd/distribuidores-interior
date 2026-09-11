@@ -5,17 +5,23 @@ import pandas as pd
 st.set_page_config(layout="wide")
 
 # ==========================================
-# 1. SISTEMA DE AUTENTICACIÓN SEGURO
+# 1. SISTEMA DE AUTENTICACIÓN SEGURO Y TOKEN
 # ==========================================
+if 'usuario_actual' not in st.session_state:
+    st.session_state['usuario_actual'] = None
+    st.session_state['rol'] = None
+
+# Auto-login directo por token gerencial desde el Portal Ejecutivo
+params = st.query_params
+if "token" in params and params["token"] == "LG-DirectivosVIP":
+    st.session_state['usuario_actual'] = "admin"
+    st.session_state['rol'] = "gerencia"
+
 try:
     USUARIOS = st.secrets["credenciales"]
 except FileNotFoundError:
     st.error("Error: No se encontraron las credenciales seguras. Configura los 'Secrets' en Streamlit.")
     st.stop()
-
-if 'usuario_actual' not in st.session_state:
-    st.session_state['usuario_actual'] = None
-    st.session_state['rol'] = None
 
 def login():
     st.title("Acceso al Tablero Comercial")
