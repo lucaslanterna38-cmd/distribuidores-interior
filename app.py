@@ -49,7 +49,7 @@ def cargar_y_procesar_datos():
     totales_dist = df_dist.sum()
     df_dist_pct = df_dist.div(totales_dist)
     
-    # 2. Leer promedios como cuadrícula cruda (Ignorando el formato de Excel)
+    # 2. Leer promedios y encabezados
     df_raw = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', header=None)
     
     def limpiar_porcentaje(val):
@@ -64,7 +64,6 @@ def cargar_y_procesar_datos():
         except ValueError:
             return 0.0
 
-    # Escanear como radar para encontrar coordenadas exactas
     col_promedio_idx = None
     col_marca_idx = None
     row_idx = None
@@ -78,6 +77,12 @@ def cargar_y_procesar_datos():
             if 'MARCA' in val:
                 col_marca_idx = c
                 
+    # Identificar qué distribuidores realmente interesan según la hoja principal
+    distribuidores_validos = []
+    if row_idx is not None:
+        encabezados = df_raw.iloc[row_idx].astype(str).str.strip().tolist()
+        distribuidores_validos = [h for h in encabezados if h.split(';')[0].isdigit() and len(h.split(';')[0]) == 6]
+                
     promedio_dict = {}
     if col_promedio_idx is not None and col_marca_idx is not None:
         for r in range(row_idx + 1, len(df_raw)):
@@ -88,10 +93,11 @@ def cargar_y_procesar_datos():
     else:
         st.warning("No se encontró la columna 'PROMEDIO TOTAL' o 'MARCA' en la hoja principal.")
         
-    # 3. Asignar los valores cruzando forzosamente los nombres
-    df_final = df_dist_pct.copy()
-    promedios_alineados = []
+    # 3. Filtrar columnas basura y asignar los promedios
+    columnas_a_mantener = [c for c in df_dist_pct.columns if c in distribuidores_validos]
+    df_final = df_dist_pct[columnas_a_mantener].copy()
     
+    promedios_alineados = []
     for marca_original in df_final.index:
         marca_limpia = str(marca_original).strip().upper()
         promedios_alineados.append(promedio_dict.get(marca_limpia, 0.0))
