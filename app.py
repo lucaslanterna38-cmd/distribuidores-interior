@@ -49,7 +49,7 @@ def cargar_y_procesar_datos():
     totales_dist = df_dist.sum()
     df_dist_pct = df_dist.div(totales_dist)
     
-    # 2. Leer promedios como cuadrícula cruda (sin importar dónde estén los encabezados)
+    # 2. Leer promedios como cuadrícula cruda (Ignorando el formato de Excel)
     df_raw = pd.read_excel('datos.xlsx', sheet_name='Distribuidores por Marca en $', header=None)
     
     def limpiar_porcentaje(val):
@@ -64,30 +64,31 @@ def cargar_y_procesar_datos():
         except ValueError:
             return 0.0
 
-    # Escanear las primeras 10 filas buscando la coordenada exacta de "PROMEDIO TOTAL"
-    col_idx = None
+    # Escanear como radar para encontrar coordenadas exactas
+    col_promedio_idx = None
+    col_marca_idx = None
     row_idx = None
-    for r in range(min(10, len(df_raw))):
+    
+    for r in range(min(15, len(df_raw))):
         for c in range(len(df_raw.columns)):
-            if str(df_raw.iloc[r, c]).strip().upper() == 'PROMEDIO TOTAL':
-                col_idx = c
+            val = str(df_raw.iloc[r, c]).strip().upper()
+            if 'PROMEDIO TOTAL' in val:
+                col_promedio_idx = c
                 row_idx = r
-                break
-        if col_idx is not None:
-            break
-            
+            if 'MARCA' in val:
+                col_marca_idx = c
+                
     promedio_dict = {}
-    if col_idx is not None:
-        # Extraer marcas (col 0) y valores (col_idx) mapeados en un diccionario
+    if col_promedio_idx is not None and col_marca_idx is not None:
         for r in range(row_idx + 1, len(df_raw)):
-            marca = str(df_raw.iloc[r, 0]).strip().upper()
+            marca = str(df_raw.iloc[r, col_marca_idx]).strip().upper()
             if marca and marca != 'NAN':
-                val = df_raw.iloc[r, col_idx]
+                val = df_raw.iloc[r, col_promedio_idx]
                 promedio_dict[marca] = limpiar_porcentaje(val)
     else:
-        st.warning("No se encontró la columna 'PROMEDIO TOTAL' en la hoja.")
+        st.warning("No se encontró la columna 'PROMEDIO TOTAL' o 'MARCA' en la hoja principal.")
         
-    # 3. Asignar los valores alineando forzosamente los nombres de las marcas en mayúsculas
+    # 3. Asignar los valores cruzando forzosamente los nombres
     df_final = df_dist_pct.copy()
     promedios_alineados = []
     
