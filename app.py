@@ -77,12 +77,11 @@ def cargar_y_procesar_datos():
             if 'MARCA' in val:
                 col_marca_idx = c
                 
-    # Extraer solo los distribuidores que existen en los títulos, de forma segura
     distribuidores_validos = []
     if row_idx is not None:
         encabezados = df_raw.iloc[row_idx].tolist()
         for h in encabezados:
-            h_str = str(h).strip() # Forzamos a que sea texto siempre
+            h_str = str(h).strip()
             if ';' in h_str:
                 codigo = h_str.split(';')[0]
                 if codigo.isdigit() and len(codigo) == 6:
@@ -158,7 +157,40 @@ else:
         st.title("Vista Gerencial - Todos los Distribuidores")
         st.write("Visualización de equilibrio de portafolio por marcas.")
         
-        df_estilizado = df.style.apply(aplicar_color_gerencia, axis=1).format(formato_dict)
+        # Filtros interactivos en la vista gerencial
+        st.subheader("Filtros de Visualización")
+        col_f1, col_f2 = st.columns(2)
+        
+        with col_f1:
+            lista_distribuidores = [c for c in df.columns if c != 'Promedio Total']
+            distribuidores_seleccionados = st.multiselect(
+                "Filtrar por Distribuidores (dejar vacío para ver todos):",
+                options=lista_distribuidores,
+                default=[]
+            )
+            
+        with col_f2:
+            lista_marcas = df.index.tolist()
+            marcas_seleccionadas = st.multiselect(
+                "Filtrar por Marcas (dejar vacío para ver todas):",
+                options=lista_marcas,
+                default=[]
+            )
+            
+        # Aplicar filtros al DataFrame de gerencia
+        df_filtrado = df.copy()
+        
+        if distribuidores_seleccionados:
+            columnas_mantener = distribuidores_seleccionados.copy()
+            if 'Promedio Total' not in columnas_mantener:
+                columnas_mantener.append('Promedio Total')
+            df_filtrado = df_filtrado[columnas_mantener]
+            
+        if marcas_seleccionadas:
+            df_filtrado = df_filtrado.loc[df_filtrado.index.isin(marcas_seleccionadas)]
+        
+        # Aplicar estilos y formato
+        df_estilizado = df_filtrado.style.apply(aplicar_color_gerencia, axis=1).format(formato_dict)
         st.dataframe(df_estilizado, height=800, use_container_width=True)
         
     elif st.session_state['rol'] == 'distribuidor':
