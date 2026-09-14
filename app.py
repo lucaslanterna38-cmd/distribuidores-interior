@@ -121,27 +121,29 @@ def cargar_y_procesar_datos():
 
 @st.cache_data
 def cargar_mapeo_vendedores():
-    """Lee la hoja 'Vendedores' para mapear qué código corresponde a cada vendedor."""
+    """Lee la hoja 'Vendedores' utilizando la Columna A (Código) y Columna D (Vendedor)."""
     try:
         df_vend = pd.read_excel('datos.xlsx', sheet_name='Vendedores')
         
         mapeo = {}
         for _, row in df_vend.iterrows():
-            vendedor = str(row.get('VENDEDOR', '')).strip()
-            distribuidor = str(row.get('CÓDIGO Y DISTRIBUIDOR', '')).strip()
+            # Usamos índices: 0 = Columna A (CÓDIGO DISTRIBUIDOR), 3 = Columna D (VENDEDOR)
+            # Esto evita errores si los encabezados tienen espacios extra
+            codigo_raw = str(row.iloc[0]).split('.')[0].strip() # Quita .0 si pandas lo lee como número
+            codigo = codigo_raw.zfill(6) # Rellena con ceros a la izquierda hasta que sean 6 dígitos
             
-            # Extraemos de forma robusta solo el código de 6 dígitos antes del punto y coma
-            if ';' in distribuidor:
-                codigo = distribuidor.split(';')[0].strip()
-                if vendedor and codigo and vendedor.lower() != 'nan':
-                    if vendedor not in mapeo:
-                        mapeo[vendedor] = []
-                    # Añadimos el código sin repetir
-                    if codigo not in mapeo[vendedor]:
-                        mapeo[vendedor].append(codigo)
+            vendedor = str(row.iloc[3]).strip()
+            
+            # Filtramos filas vacías
+            if vendedor and vendedor.lower() != 'nan' and codigo_raw.lower() != 'nan':
+                if vendedor not in mapeo:
+                    mapeo[vendedor] = []
+                if codigo not in mapeo[vendedor]:
+                    mapeo[vendedor].append(codigo)
+                    
         return mapeo
     except Exception as e:
-        st.error("No se encontró la hoja 'Vendedores' en datos.xlsx o hay un error de formato.")
+        st.error(f"Hubo un problema al leer la hoja 'Vendedores': {e}")
         return {}
 
 # ==========================================
@@ -243,7 +245,7 @@ else:
         mapeo_vendedores = cargar_mapeo_vendedores()
         codigos_asignados = mapeo_vendedores.get(nombre_vendedor, [])
         
-        # Filtro robusto: cruza usando el inicio del texto (código de 6 dígitos)
+        # Filtro infalible: comprobamos si cada columna del dataframe arranca con alguno de los 6 dígitos vinculados
         columnas_vendedor = [c for c in df.columns if any(str(c).startswith(cod) for cod in codigos_asignados)]
         
         if columnas_vendedor:
@@ -269,11 +271,9 @@ else:
             
             df_mostrar = df_vendedor.copy()
             
-            # Aplicar filtro de columnas (distribuidores)
             if dist_seleccionados:
                 df_mostrar = df_mostrar[dist_seleccionados + ['Promedio Total']]
                 
-            # Aplicar filtro de filas (marcas)
             if marcas_seleccionadas:
                 df_mostrar = df_mostrar.loc[df_mostrar.index.isin(marcas_seleccionadas)]
             
