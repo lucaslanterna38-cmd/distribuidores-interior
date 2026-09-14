@@ -25,7 +25,7 @@ except FileNotFoundError:
 
 def login():
     st.title("Acceso al Tablero Comercial")
-    usuario = st.text_input("Usuario (Código de 6 dígitos)")
+    usuario = st.text_input("Usuario (Código o Nombre)")
     password = st.text_input("Contraseña", type="password")
     
     if st.button("Ingresar"):
@@ -119,14 +119,34 @@ def cargar_y_procesar_datos():
     
     return df_final
 
+@st.cache_data
+def cargar_mapeo_vendedores():
+    """Lee la hoja 'Vendedores' para mapear qué distribuidor corresponde a cada vendedor."""
+    try:
+        df_vend = pd.read_excel('datos.xlsx', sheet_name='Vendedores')
+        
+        mapeo = {}
+        for _, row in df_vend.iterrows():
+            vendedor = str(row.get('VENDEDOR', '')).strip()
+            distribuidor = str(row.get('CÓDIGO Y DISTRIBUIDOR', '')).strip()
+            
+            if vendedor and distribuidor and vendedor.lower() != 'nan':
+                if vendedor not in mapeo:
+                    mapeo[vendedor] = []
+                mapeo[vendedor].append(distribuidor)
+        return mapeo
+    except Exception as e:
+        st.error("No se encontró la hoja 'Vendedores' en datos.xlsx o hay un error de formato.")
+        return {}
+
 # ==========================================
 # 3. LÓGICA DE VISUALIZACIÓN Y COLORES
 # ==========================================
 def aplicar_color_gerencia(row):
+    # Esta función sirve tanto para gerencia como para vendedores (múltiples columnas)
     estilos = [''] * len(row)
     promedio = row['Promedio Total']
     
-    # Redondeamos el promedio a 4 decimales para igualar la vista de {:.2%}
     promedio_rnd = round(promedio, 4)
     
     for i, col in enumerate(row.index):
@@ -134,13 +154,10 @@ def aplicar_color_gerencia(row):
             val = row[col]
             val_rnd = round(val, 4)
             
-            # 1. Si ambos son 0 (luego de redondear), siempre rojo
             if val_rnd == 0 and promedio_rnd == 0:
                 estilos[i] = 'background-color: #f8d7da; color: #721c24;'
-            # 2. Si el valor es mayor o IGUAL al promedio, verde
             elif val_rnd >= promedio_rnd:
                 estilos[i] = 'background-color: #d4edda; color: #155724;'
-            # 3. Si es estrictamente menor, rojo
             else:
                 estilos[i] = 'background-color: #f8d7da; color: #721c24;'
     return estilos
@@ -161,6 +178,7 @@ def aplicar_color_individual(row):
         estilos[0] = 'background-color: #f8d7da; color: #721c24;'
         
     return estilos
+
 # ==========================================
 # 4. RENDERIZADO DE LA APLICACIÓN
 # ==========================================
@@ -172,11 +190,11 @@ else:
     
     formato_dict = {col: "{:.2%}" for col in df.columns}
     
+    # ---------------- VISTA GERENCIA ----------------
     if st.session_state['rol'] == 'gerencia':
         st.title("Vista Gerencial - Todos los Distribuidores")
         st.write("Visualización de equilibrio de portafolio por marcas.")
         
-        # Filtros interactivos en la vista gerencial
         st.subheader("Filtros de Visualización")
         col_f1, col_f2 = st.columns(2)
         
@@ -196,7 +214,6 @@ else:
                 default=[]
             )
             
-        # Aplicar filtros al DataFrame de gerencia
         df_filtrado = df.copy()
         
         if distribuidores_seleccionados:
@@ -208,10 +225,46 @@ else:
         if marcas_seleccionadas:
             df_filtrado = df_filtrado.loc[df_filtrado.index.isin(marcas_seleccionadas)]
         
-        # Aplicar estilos y formato
         df_estilizado = df_filtrado.style.apply(aplicar_color_gerencia, axis=1).format(formato_dict)
         st.dataframe(df_estilizado, height=800, use_container_width=True)
         
+    # ---------------- VISTA VENDEDOR ----------------
+    elif st.session_state['rol'] == 'vendedor':
+        datos_usuario = USUARIOS.get(st.session_state['usuario_actual'], {})
+        nombre_vendedor = datos_usuario.get("nombre", "")
+        
+        st.title(f"Tablero de Desempeño: {nombre_vendedor}")
+        st.write("Visualización del desempeño de tus distribuidores asignados contra el Promedio Total esperado.")
+        
+        mapeo_vendedores = cargar_mapeo_vendedores()
+        distribuidores_asignados = mapeo_vendedores.get(nombre_vendedor, [])
+        
+        # Cruzar los distribuidores asignados con las columnas existentes en el Excel principal
+        columnas_vendedor = [c for c in df.columns if c in distribuidores_asignados]
+        
+        if columnas_vendedor:
+            df_vendedor = df[columnas_vendedor + ['Promedio Total']]
+            
+            st.subheader("Tus Distribuidores")
+            dist_seleccionados = st.multiselect(
+                "Filtrar tu vista (dejar vacío para ver todos):",
+                options=columnas_vendedor,
+                default=[]
+            )
+            
+            df_mostrar = df_vendedor.copy()
+            if dist_seleccionados:
+                df_mostrar = df_mostrar[dist_seleccionados + ['Promedio Total']]
+            
+            formato_vend = {col: "{:.2%}" for col in df_mostrar.columns}
+            # Reutilizamos la función aplicar_color_gerencia ya que evalúa múltiples columnas vs Promedio Total
+            df_vend_estilizado = df_mostrar.style.apply(aplicar_color_gerencia, axis=1).format(formato_vend)
+            
+            st.dataframe(df_vend_estilizado, height=800, use_container_width=True)
+        else:
+            st.warning("No se encontraron datos de ventas cargados para tus distribuidores asignados.")
+
+    # ---------------- VISTA DISTRIBUIDOR ----------------
     elif st.session_state['rol'] == 'distribuidor':
         usuario_codigo = st.session_state['usuario_actual']
         
