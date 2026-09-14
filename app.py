@@ -114,6 +114,9 @@ def cargar_y_procesar_datos():
         
     df_final['Promedio Total'] = promedios_alineados
     
+    # 4. Eliminar filas con promedio negativo
+    df_final = df_final[df_final['Promedio Total'] >= 0]
+    
     return df_final
 
 # ==========================================
