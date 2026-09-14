@@ -121,7 +121,7 @@ def cargar_y_procesar_datos():
 
 @st.cache_data
 def cargar_mapeo_vendedores():
-    """Lee la hoja 'Vendedores' para mapear qué distribuidor corresponde a cada vendedor."""
+    """Lee la hoja 'Vendedores' para mapear qué código corresponde a cada vendedor."""
     try:
         df_vend = pd.read_excel('datos.xlsx', sheet_name='Vendedores')
         
@@ -130,10 +130,15 @@ def cargar_mapeo_vendedores():
             vendedor = str(row.get('VENDEDOR', '')).strip()
             distribuidor = str(row.get('CÓDIGO Y DISTRIBUIDOR', '')).strip()
             
-            if vendedor and distribuidor and vendedor.lower() != 'nan':
-                if vendedor not in mapeo:
-                    mapeo[vendedor] = []
-                mapeo[vendedor].append(distribuidor)
+            # Extraemos de forma robusta solo el código de 6 dígitos antes del punto y coma
+            if ';' in distribuidor:
+                codigo = distribuidor.split(';')[0].strip()
+                if vendedor and codigo and vendedor.lower() != 'nan':
+                    if vendedor not in mapeo:
+                        mapeo[vendedor] = []
+                    # Añadimos el código sin repetir
+                    if codigo not in mapeo[vendedor]:
+                        mapeo[vendedor].append(codigo)
         return mapeo
     except Exception as e:
         st.error("No se encontró la hoja 'Vendedores' en datos.xlsx o hay un error de formato.")
@@ -143,7 +148,6 @@ def cargar_mapeo_vendedores():
 # 3. LÓGICA DE VISUALIZACIÓN Y COLORES
 # ==========================================
 def aplicar_color_gerencia(row):
-    # Esta función sirve tanto para gerencia como para vendedores (múltiples columnas)
     estilos = [''] * len(row)
     promedio = row['Promedio Total']
     
@@ -237,27 +241,43 @@ else:
         st.write("Visualización del desempeño de tus distribuidores asignados contra el Promedio Total esperado.")
         
         mapeo_vendedores = cargar_mapeo_vendedores()
-        distribuidores_asignados = mapeo_vendedores.get(nombre_vendedor, [])
+        codigos_asignados = mapeo_vendedores.get(nombre_vendedor, [])
         
-        # Cruzar los distribuidores asignados con las columnas existentes en el Excel principal
-        columnas_vendedor = [c for c in df.columns if c in distribuidores_asignados]
+        # Filtro robusto: cruza usando el inicio del texto (código de 6 dígitos)
+        columnas_vendedor = [c for c in df.columns if any(str(c).startswith(cod) for cod in codigos_asignados)]
         
         if columnas_vendedor:
-            df_vendedor = df[columnas_vendedor + ['Promedio Total']]
+            df_vendedor = df[columnas_vendedor + ['Promedio Total']].copy()
             
-            st.subheader("Tus Distribuidores")
-            dist_seleccionados = st.multiselect(
-                "Filtrar tu vista (dejar vacío para ver todos):",
-                options=columnas_vendedor,
-                default=[]
-            )
+            st.subheader("Filtros de Visualización")
+            col_f1, col_f2 = st.columns(2)
+            
+            with col_f1:
+                dist_seleccionados = st.multiselect(
+                    "Filtrar por Distribuidores (dejar vacío para ver todos):",
+                    options=columnas_vendedor,
+                    default=[]
+                )
+                
+            with col_f2:
+                lista_marcas = df_vendedor.index.tolist()
+                marcas_seleccionadas = st.multiselect(
+                    "Filtrar por Marcas (dejar vacío para ver todas):",
+                    options=lista_marcas,
+                    default=[]
+                )
             
             df_mostrar = df_vendedor.copy()
+            
+            # Aplicar filtro de columnas (distribuidores)
             if dist_seleccionados:
                 df_mostrar = df_mostrar[dist_seleccionados + ['Promedio Total']]
+                
+            # Aplicar filtro de filas (marcas)
+            if marcas_seleccionadas:
+                df_mostrar = df_mostrar.loc[df_mostrar.index.isin(marcas_seleccionadas)]
             
             formato_vend = {col: "{:.2%}" for col in df_mostrar.columns}
-            # Reutilizamos la función aplicar_color_gerencia ya que evalúa múltiples columnas vs Promedio Total
             df_vend_estilizado = df_mostrar.style.apply(aplicar_color_gerencia, axis=1).format(formato_vend)
             
             st.dataframe(df_vend_estilizado, height=800, use_container_width=True)
