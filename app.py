@@ -123,13 +123,21 @@ def aplicar_color_gerencia(row):
     estilos = [''] * len(row)
     promedio = row['Promedio Total']
     
+    # Redondeamos el promedio a 4 decimales para igualar la vista de {:.2%}
+    promedio_rnd = round(promedio, 4)
+    
     for i, col in enumerate(row.index):
         if col != 'Promedio Total':
             val = row[col]
-            if val <= 1e-6 and promedio <= 1e-6:
+            val_rnd = round(val, 4)
+            
+            # 1. Si ambos son 0 (luego de redondear), siempre rojo
+            if val_rnd == 0 and promedio_rnd == 0:
                 estilos[i] = 'background-color: #f8d7da; color: #721c24;'
-            elif val >= promedio:
+            # 2. Si el valor es mayor o IGUAL al promedio, verde
+            elif val_rnd >= promedio_rnd:
                 estilos[i] = 'background-color: #d4edda; color: #155724;'
+            # 3. Si es estrictamente menor, rojo
             else:
                 estilos[i] = 'background-color: #f8d7da; color: #721c24;'
     return estilos
@@ -139,15 +147,17 @@ def aplicar_color_individual(row):
     val = row.iloc[0]
     promedio = row['Promedio Total']
     
-    if val <= 1e-6 and promedio <= 1e-6:
+    val_rnd = round(val, 4)
+    promedio_rnd = round(promedio, 4)
+    
+    if val_rnd == 0 and promedio_rnd == 0:
         estilos[0] = 'background-color: #f8d7da; color: #721c24;'
-    elif val >= promedio:
+    elif val_rnd >= promedio_rnd:
         estilos[0] = 'background-color: #d4edda; color: #155724;'
     else:
         estilos[0] = 'background-color: #f8d7da; color: #721c24;'
         
     return estilos
-
 # ==========================================
 # 4. RENDERIZADO DE LA APLICACIÓN
 # ==========================================
